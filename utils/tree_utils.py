@@ -304,11 +304,30 @@ def show_mols(smiles_mols,legends=[],subImgSize=(600,600)):
     png=Draw.MolsToGridImage(mols,molsPerRow=molsPerRow,subImgSize=subImgSize,legends=legends_cls,returnPNG=False) 
     return png
 
-def show_mols_cairo(ismi,legend):
+def show_mols_cairo(ismi,legend, highlightInfo=False):
     mol = Chem.MolFromSmiles(ismi)
+    # 遍历分子中的原子，将虚拟原子（*）的标签改为 "A"
+    for atom in mol.GetAtoms():
+        if atom.GetSymbol() == '*':  # 判断虚拟虚拟原子的符号通常为 *
+            atom.SetProp('atomLabel', 'A')  # 设置显示标签为 A
+
+    
+    all_atoms=[]
+    all_bonds=[]
+    if highlightInfo:
+        # 获取所有原子的索引（从0开始）
+        all_atoms = list(range(mol.GetNumAtoms()))
+        # 获取所有键的索引（从0开始）
+        all_bonds = list(range(mol.GetNumBonds()))
+
     drawer = MolDraw2DCairo(400, 400)
-    drawer.drawOptions().legendFontSize = 160
-    drawer.DrawMolecule(mol,legend=legend)
+    # 设置字体大小（关键参数）
+    drawer.SetFontSize(640)
+    drawer.drawOptions().legendFraction  = 0.2
+    drawer.drawOptions().legendFontSize = 2400
+    drawer.DrawMolecule(mol,legend=legend, highlightAtoms=all_atoms,
+    highlightBonds=all_bonds)
+
     drawer.FinishDrawing()
     img = drawer.GetDrawingText()
     # with open('mol.png', 'wb') as f:
@@ -324,14 +343,19 @@ def show_mols_cairo(ismi,legend):
 def match_frag(ismi,ismarts):
     # print("ismi",ismi)
     # print("ismarts",ismarts)
-    mol = Chem.MolFromSmiles(ismi)
-    ismarts=replace_nH(ismarts)
-    smartsMol = Chem.MolFromSmarts(ismarts) #,sanitize=False
-    matched=mol.GetSubstructMatches(smartsMol)
-    if len(matched)>0:
-        # print(matched)
-        return 1
-    else:
+    try:
+        mol = Chem.MolFromSmiles(ismi)
+        ismarts=replace_nH(ismarts)
+        smartsMol = Chem.MolFromSmarts(ismarts) #,sanitize=False
+        matched=mol.GetSubstructMatches(smartsMol)
+        if len(matched)>0:
+            # print(matched)
+            return 1
+        else:
+            return 0
+    except Exception as e:
+        print('match_frag', ismi, ismarts)
+        print(e)
         return 0
     
 def remove_ionizationForm(smiList):
@@ -357,29 +381,75 @@ def fetch_table_info(df_table,smi):
         res_str=''+'{0: >15}'.format(str(info['Size'])+str(info['Items_count']))+'\n'
     return res_str
 
-def get_activity_info(df_act,frag, actCols=[]):
-    df_act=df_act.copy()
-    df_act['matched']=df_act.apply(lambda x: match_frag(x['Cano_SMILES'],ismarts=frag),axis=1)
-    df_match=df_act[df_act['matched']==1]
-    # print(df_match)
-    if len(df_match)==0:
-        return ''
-    if len(df_match)==1:
-        means=df_match.iloc[0]
-        stds=df_match.iloc[0]
-        medians=df_match.iloc[0]
-    if len(df_match)>1:
-        means=df_match.mean()
-        stds=df_match.std()
-        medians=df_match.median()
-    actInfo=''
-    for itarget in actCols:#["JAK1ToJAK2","JAK1","JAK2"]:
-        iInfo='{0: <15}'.format(f"{itarget}:")
-        for imetric in [means,stds,medians]:
-            iInfo+='{0: <10}'.format(f"{round(imetric[itarget],1)}")
-        iInfo+="|\n"
-        actInfo+=iInfo
-    return actInfo
+def get_activity_info(df_act, frag, actCols=[], highlightDictList=[]):
+    '''   Get the activity value of a fragment according molecules   '''
+    if 1:
+        df_act=df_act.copy()
+        df_act['matched']=df_act.apply(lambda x: match_frag(x['Cano_SMILES'],ismarts=frag),axis=1)
+        
+        df_match=df_act[df_act['matched']==1]
+        print(df_match)
+        df_match = df_match[actCols]
+        meanStdMedianDict = {'mean':{}, 'std':{}, 'median':{}, 'min':{}, 'max':{}} ##
+
+        for iactCol in actCols:
+            dfMatchTmp = df_match.copy()
+            
+            dfMatchTmp = dfMatchTmp.dropna(subset=[iactCol])
+
+            if len(dfMatchTmp)==1:
+                meanStdMedianDict['mean'][iactCol]=float(dfMatchTmp.iloc[0])
+                meanStdMedianDict['std'][iactCol]=float(dfMatchTmp.iloc[0])
+                meanStdMedianDict['median'][iactCol]=float(dfMatchTmp.iloc[0])
+                meanStdMedianDict['min'][iactCol]=float(dfMatchTmp.iloc[0])
+                meanStdMedianDict['max'][iactCol]=float(dfMatchTmp.iloc[0])
+            if len(dfMatchTmp)>1:
+                meanStdMedianDict['mean'][iactCol]=float(dfMatchTmp.mean())
+                meanStdMedianDict['std'][iactCol]=float(dfMatchTmp.std())
+                meanStdMedianDict['median'][iactCol]=float(dfMatchTmp.median())
+                meanStdMedianDict['min'][iactCol]=float(dfMatchTmp.min())
+                meanStdMedianDict['max'][iactCol]=float(dfMatchTmp.max())
+
+        hightLightInfo = True
+        if len(highlightDictList)==0:  ## no highlight info
+            hightLightInfo = False   
+
+        if len(highlightDictList)>0:  ## check if highlight info satisfied
+            hightLightInfo = True   
+            for ihighlightDict in highlightDictList:
+                irelation=ihighlightDict['relation']
+                itype=ihighlightDict['type']
+                ivalue=float(ihighlightDict['value'])
+                icol=ihighlightDict['col']
+
+                if icol in meanStdMedianDict[itype].keys():
+
+                    if irelation == ">":
+                        if not meanStdMedianDict[itype][icol] > ivalue:
+                            hightLightInfo = False
+                    if irelation == "=":
+                        if not meanStdMedianDict[itype][icol] == ivalue:
+                            hightLightInfo = False
+                    if irelation == "<":
+                        if not meanStdMedianDict[itype][icol] < ivalue:
+                            hightLightInfo = False
+                else:
+                    hightLightInfo = False
+
+
+        actInfo=''
+        for itarget in actCols:#["JAK1ToJAK2","JAK1","JAK2"]:
+            iInfo='{0: <15}'.format(f"{itarget}:")
+            for imetric in meanStdMedianDict.keys(): #['mean','std','median']:
+                if itarget in meanStdMedianDict[imetric].keys():
+                    iInfo+='{0: <10}'.format(f"{round(float(meanStdMedianDict[imetric][itarget]),1)}")
+            if iInfo != '{0: <15}'.format(f"{itarget}:"):
+                iInfo+="|\n"
+                actInfo+=iInfo
+        return actInfo, hightLightInfo
+    # except Exception as e:
+    #     print('get_activity_info', frag, actCols)
+    #     return '', False
 
 def find_children_single(ismi,smi_list,ring=0):
     children_list=[]
@@ -449,13 +519,22 @@ def find_root(smi_list,n_jobs=20,ring=1):
     roots=[iroot for iroot in roots if iroot!=None]
     return roots
 
-def show_cpd(img_icpd,df_table,df_act,actCols):
+def show_cpd(img_icpd, df_table, df_act, actCols, highlightDictList=[]):
     imgPath=img_icpd[0]
     icpd=img_icpd[1]
     if icpd=='':
         return None
     icpd_dummy=fetch_table_SMILES(df_table,icpd)
-    img=show_mols_cairo(icpd_dummy,fetch_table_info(df_table,icpd)+get_activity_info(df_act,icpd,actCols))
+    print(f"icpd_dummy: {icpd_dummy}", icpd, actCols)
+    actHighlightInfo = get_activity_info(df_act, icpd, actCols, highlightDictList)
+    if len(actHighlightInfo) !=2:
+        activityStr=''
+        highlightInfo = False
+    else:
+        activityStr=actHighlightInfo[0]
+        highlightInfo = actHighlightInfo[1] 
+    icpd_dummy_multiline = '\n'.join([icpd_dummy[i:i+20] for i in range(0, len(icpd_dummy), 20)])
+    img=show_mols_cairo(icpd_dummy, fetch_table_info(df_table,icpd) + activityStr+icpd_dummy_multiline , highlightInfo=highlightInfo)
     with open(imgPath, 'wb') as f:
         f.write(img)
     return [imgPath,icpd_dummy]

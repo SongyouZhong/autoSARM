@@ -12,19 +12,34 @@ from pathlib import Path
 import os,sys
 import re
 
+def get_number_from_string(text):
+    ''' get number from string  '''
+    text=str(text)
+    # pattern = r'\d+\.\d+'
+    pattern = r'[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?'
+    matches = re.findall(pattern, text)
+    if len(matches)>0:
+        return float(matches[0])
+    else:
+        return None
 
-def float_row(df, cols=[]):
+
+def float_row(df, cols=[],dropna=True):
     ''' transform the row format into float '''
     for icol in cols:
         data_error_index=[]
         for idx,row in df.iterrows():
             data_col=df.loc[idx,icol]
             try:
+                data_col=get_number_from_string(data_col)
                 value=float(data_col)
-                value=value>20
+                df.loc[idx,icol]=value
+                # value=value>20
             except:
                 data_error_index.append(idx)
-        df=df.drop(labels=data_error_index)
+                df.loc[idx,icol]=np.nan
+        if dropna:
+            df=df.drop(labels=data_error_index)
         df[icol]=df[icol].astype(float)
     return df
 
@@ -144,6 +159,41 @@ def compute_FP(mol, radius=2, nBits=1024):
     FP = AllChem.GetMorganFingerprintAsBitVect(
         mol, radius, nBits=nBits)
     return FP
+
+def compute_sim(smi, smi_list, mode='smi-smi'):
+    if mode=='smi-smis':
+        mol1 = Chem.MolFromSmiles(smi)
+        FP1 = AllChem.GetMorganFingerprintAsBitVect(
+        mol1, 2, nBits=1024)
+        mols = [Chem.MolFromSmiles(ismi)
+            for ismi in smi_list]
+        FPs = [AllChem.GetMorganFingerprintAsBitVect(
+        imol, 2, nBits=1024) for imol in mols]
+        molSims = [DataStructs.TanimotoSimilarity(
+                    FP, FP1) for FP in FPs]
+        
+    if mode=='smi-smi':
+        mol1 = Chem.MolFromSmiles(smi)
+        mol2 = Chem.MolFromSmiles(smi_list)
+        if mol1==None or mol2==None:
+            return 0
+
+        FP1 = AllChem.GetMorganFingerprintAsBitVect(
+        mol1, 2, nBits=1024)
+        FP2 = AllChem.GetMorganFingerprintAsBitVect(
+        mol2, 2, nBits=1024)
+        molSims = DataStructs.TanimotoSimilarity(
+                    FP1, FP2)
+        
+    if mode=='smi-FPs':
+        mol1 = Chem.MolFromSmiles(smi)
+        FP1 = AllChem.GetMorganFingerprintAsBitVect(
+        mol1, 2, nBits=1024)
+        FPs=smi_list
+        molSims = [DataStructs.TanimotoSimilarity(
+                    FP, FP1) for FP in FPs]
+        
+    return molSims
 
 def mapper(n_jobs):
     '''
