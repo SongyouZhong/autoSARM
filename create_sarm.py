@@ -3,7 +3,7 @@
 ''' Set the environment  '''
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem,Draw
-from rdkit.Chem import MCS
+from rdkit.Chem import rdFMCS as MCS
 import pandas as pd
 import numpy as np
 import copy,re
@@ -12,6 +12,8 @@ from my_toolset.my_utils import get_mol,compute_FP,canonic_smiles,mapper,weight
 from my_toolset.drawing_utils import show_mols
 import os,sys
 import argparse
+import logging
+from datetime import datetime
 
 
 from IPython.display import display, SVG, display_svg
@@ -41,44 +43,137 @@ jupyterMode=0
 class argNamespace:
     ''' for test in jupyter notebook  '''
     def __init__(self):  
-        self.protein = '/mnt/public-bg6/jay.zhang/Codes-public/Vina/Test/8jzx.pdb'  # 'self'引用的是类实例自身  
-        self.ligand = '/mnt/public-bg6/jay.zhang/Codes-public/Vina/Test/c5.pdb' 
-        self.addH = 1
+        # TODO: Configure these parameters for Jupyter notebook testing
+        self.csvFile = 'SAR_Results/input.csv'
+        self.type = 'smiles'
+        self.column = ['IC50_uM']
+        self.log = 1
+        self.minimumSite1 = 3
+        self.minimumSite2 = 3
+        self.n_jobs = 8
+        self.save_folder = 'SAR_Results'
+        self.csv2excel = 0
+
+
+def setup_logging(save_folder):
+    ''' Setup logging configuration '''
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = os.path.join(save_folder, f'create_sarm_{timestamp}.log')
+    
+    # Configure logging to both file and console
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logging.info(f"Log file created: {log_file}")
+    return log_file
 
 
 def main(args):
     ''' change the work directory  '''
-    act_csv_file=args.csvFile
-    value_cols=args.column
-    log=args.log
+    try:
+        # Setup logging first
+        log_file = setup_logging(args.save_folder)
+        logging.info("="*80)
+        logging.info("Starting SAR Matrix Generation")
+        logging.info("="*80)
+        
+        act_csv_file=args.csvFile
+        value_cols=args.column
+        log=args.log
 
-    dfAcat=pd.read_csv(act_csv_file)
-    # print(dfAcat)
-    dfAcat=float_row(dfAcat,cols=value_cols)
-    for icol in value_cols:
-        dfAcat[icol]=dfAcat[icol].apply(lambda x: math.log(x) if log else x)
-    df_sele=df_valid(dfAcat,row_smi='smiles')
+        logging.info(f"Input CSV file: {act_csv_file}")
+        logging.info(f"Value columns: {value_cols}")
+        logging.info(f"Log transform: {log}")
+        logging.info(f"Minimum count site1: {args.minimumSite1}")
+        logging.info(f"Minimum count site2: {args.minimumSite2}")
+        logging.info(f"Number of jobs: {args.n_jobs}")
+        logging.info(f"Save folder: {args.save_folder}")
+        
+        dfAcat=pd.read_csv(act_csv_file)
+        logging.info(f"Loaded {len(dfAcat)} rows from CSV file")
+        dfAcat=pd.read_csv(act_csv_file)
+        logging.info(f"Loaded {len(dfAcat)} rows from CSV file")
+        # print(dfAcat)
+        dfAcat=float_row(dfAcat,cols=value_cols)
+        logging.info(f"Converted value columns to float")
+        
+        for icol in value_cols:
+            dfAcat[icol]=dfAcat[icol].apply(lambda x: math.log(x) if log else x)
+        logging.info(f"Applied log transform (if enabled)")
+        
+        df_sele=df_valid(dfAcat,row_smi='smiles')
+        logging.info(f"Validated SMILES, {len(df_sele)} valid molecules")
 
-    # df_sele[value_col]=df_sele[value_col].parallel_apply(is_number)
-    # df_sele=pd.DataFrame(df_sele[df_sele[value_col]!=''])
+        # df_sele[value_col]=df_sele[value_col].parallel_apply(is_number)
+        # df_sele=pd.DataFrame(df_sele[df_sele[value_col]!=''])
 
-    if 'Cano_SMILES' not in df_sele.columns:
-        df_sele['Cano_SMILES']=df_sele['smiles'].parallel_apply(canonic_smiles)
-    df_sele = df_sele.drop_duplicates(subset=['Cano_SMILES'])
-    
-    if args.type=='scaffold':
-        df_sele['Scaffold']=[MurckoScaffoldSmiles(ismi) for ismi in df_sele["Cano_SMILES"]]
-        act_CPDs=df_sele['Scaffold']
-        smi_col='Scaffold'
+        if 'Cano_SMILES' not in df_sele.columns:
+            logging.info("Canonicalizing SMILES...")
+            df_sele['Cano_SMILES']=df_sele['smiles'].parallel_apply(canonic_smiles)
+            logging.info("SMILES canonicalization complete")
+            
+        df_sele = df_sele.drop_duplicates(subset=['Cano_SMILES'])
+        logging.info(f"After removing duplicates: {len(df_sele)} unique molecules")
+        
+        if args.type=='scaffold':
+            logging.info("Extracting Murcko scaffolds...")
+            df_sele['Scaffold']=[MurckoScaffoldSmiles(ismi) for ismi in df_sele["Cano_SMILES"]]
+            act_CPDs=df_sele['Scaffold']
+            smi_col='Scaffold'
+            logging.info(f"Extracted {len(df_sele['Scaffold'].unique())} unique scaffolds")
 
-    if args.type=='smiles':
-        act_CPDs=df_sele['Cano_SMILES']
-        smi_col='Cano_SMILES'
+        if args.type=='smiles':
+            act_CPDs=df_sele['Cano_SMILES']
+            smi_col='Cano_SMILES'
+            logging.info("Using full SMILES for analysis")
 
-    df_round1, df_round2=fragmentize(act_CPDs, n_jobs=args.n_jobs, drop_duplicate=False, pos_args={'RR':True, 'nRnR':True})
-    print(df_round1)
-    print("Creating SARM!")
-    df_table_info_left, df_table_info_right, df_table_info_combine=create_SARM(df_round1, df_round2, df_sele, save_folder=args.save_folder, smi_col=smi_col, value_col=value_cols, minimum_count_site1=args.minimumSite1, minimum_count_site2=args.minimumSite2, csv2excel=args.csv2excel, cal_table_stats=True, n_jobs=args.n_jobs)
+        logging.info("Starting fragmentization...")
+        df_round1, df_round2=fragmentize(act_CPDs, n_jobs=args.n_jobs, drop_duplicate=False, pos_args={'RR':True, 'nRnR':True})
+        logging.info(f"Round 1 fragments: {len(df_round1)}")
+        logging.info(f"Round 2 fragments: {len(df_round2)}")
+        print(df_round1)
+        
+        logging.info("Creating SARM tables...")
+        print("Creating SARM!")
+        df_table_info_left, df_table_info_right, df_table_info_combine=create_SARM(
+            df_round1, df_round2, df_sele, 
+            save_folder=args.save_folder, 
+            smi_col=smi_col, 
+            value_col=value_cols, 
+            minimum_count_site1=args.minimumSite1, 
+            minimum_count_site2=args.minimumSite2, 
+            csv2excel=args.csv2excel, 
+            cal_table_stats=True, 
+            n_jobs=args.n_jobs
+        )
+        
+        logging.info("="*80)
+        logging.info("SAR Matrix Generation Completed Successfully!")
+        logging.info(f"Left tables: {len(df_table_info_left)}")
+        logging.info(f"Right tables: {len(df_table_info_right)}")
+        logging.info(f"Combined tables: {len(df_table_info_combine)}")
+        logging.info(f"Results saved to: {args.save_folder}")
+        logging.info(f"Log file: {log_file}")
+        logging.info("="*80)
+        
+    except Exception as e:
+        logging.error("="*80)
+        logging.error("ERROR OCCURRED!")
+        logging.error("="*80)
+        logging.error(f"Error type: {type(e).__name__}")
+        logging.error(f"Error message: {str(e)}")
+        logging.error("Full traceback:", exc_info=True)
+        logging.error("="*80)
+        raise
 
 
 

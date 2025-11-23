@@ -1,5 +1,6 @@
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem,Draw,rdFMCS
+from rdkit.Chem import rdFingerprintGenerator
 from functools import partial
 import numpy as np
 import pandas as pd
@@ -11,6 +12,49 @@ from openpyxl.drawing.spreadsheet_drawing import AnchorMarker
 from pathlib import Path
 import os,sys
 import re
+import logging
+
+def is_valid_smiles(smi):
+    """验证SMILES字符串是否有效"""
+    # 类型检查
+    if not isinstance(smi, str):
+        return False
+    
+    # 过滤纯数字和空字符串
+    smi_stripped = smi.strip()
+    if not smi_stripped or smi_stripped.isdigit():
+        return False
+    
+    # 尝试解析SMILES
+    try:
+        mol = Chem.MolFromSmiles(smi_stripped)
+        return mol is not None
+    except:
+        return False
+
+def safe_mol_from_smiles(smi, log_errors=False):
+    """安全地从SMILES创建分子对象，带类型检查"""
+    # 类型检查 - 处理numpy类型和Python原生类型
+    if isinstance(smi, (int, float, np.integer, np.floating)):
+        if log_errors:
+            logging.warning(f"Received numeric value {smi} instead of SMILES string")
+        return None
+    
+    # 转换为字符串
+    smi_str = str(smi) if smi is not None else ""
+    
+    # 验证SMILES
+    if not is_valid_smiles(smi_str):
+        if log_errors:
+            logging.warning(f"Invalid SMILES: {smi_str}")
+        return None
+    
+    try:
+        return Chem.MolFromSmiles(smi_str)
+    except Exception as e:
+        if log_errors:
+            logging.error(f"Error parsing SMILES '{smi_str}': {e}")
+        return None
 
 def get_number_from_string(text):
     ''' get number from string  '''
@@ -83,7 +127,9 @@ def csvToExcel(csv, imgCols=['SMILES','smi'],save_file='',max_imgs=500,column=Fa
                 col_letter=LETTERS[icol]
                 ws.row_dimensions[irow].height = 90
                 ws.column_dimensions[col_letter].width = 20
-                mol = Chem.MolFromSmiles(val)
+                mol = safe_mol_from_smiles(val)
+                if mol is None:
+                    continue
                 img = Draw.MolToImage(mol, size=[200, 200])
                 img.save(tmpImgPath.joinpath(f'molecule{irow}{icol}.png'))
                 img=Image(tmpImgPath.joinpath(f'molecule{irow}{icol}.png'))
@@ -108,7 +154,9 @@ def csvToExcel(csv, imgCols=['SMILES','smi'],save_file='',max_imgs=500,column=Fa
                     col_letter=LETTERS[icol]
                     ws.row_dimensions[irow].height = 90
                     ws.column_dimensions[col_letter].width = 25
-                    mol = Chem.MolFromSmiles(row[vcol])
+                    mol = safe_mol_from_smiles(row[vcol])
+                    if mol is None:
+                        continue
                     img = Draw.MolToImage(mol, size=[400, 200])
                     img.save(tmpImgPath.joinpath(f'molecule{irow}{icol}.png'))
                     img=Image(tmpImgPath.joinpath(f'molecule{irow}{icol}.png'))
@@ -154,44 +202,60 @@ def canonic_smiles(smiles_or_mol):
         print(e)
         return None
     
+# 创建全局MorganGenerator实例（提高性能）
+_morgan_generator = None
+
+def get_morgan_generator(radius=2, fpSize=1024):
+    """获取或创建MorganGenerator实例"""
+    global _morgan_generator
+    if _morgan_generator is None:
+        _morgan_generator = rdFingerprintGenerator.GetMorganGenerator(radius=radius, fpSize=fpSize)
+    return _morgan_generator
+
 def compute_FP(mol, radius=2, nBits=1024):
     mol = get_mol(mol)
-    FP = AllChem.GetMorganFingerprintAsBitVect(
-        mol, radius, nBits=nBits)
-    return FP
+    if mol is None:
+        return None
+    try:
+        # 使用新的MorganGenerator API
+        generator = get_morgan_generator(radius=radius, fpSize=nBits)
+        FP = generator.GetFingerprint(mol)
+        return FP
+    except Exception as e:
+        logging.warning(f"Error computing fingerprint: {e}")
+        return None
 
 def compute_sim(smi, smi_list, mode='smi-smi'):
+    generator = get_morgan_generator(radius=2, fpSize=1024)
+    
     if mode=='smi-smis':
-        mol1 = Chem.MolFromSmiles(smi)
-        FP1 = AllChem.GetMorganFingerprintAsBitVect(
-        mol1, 2, nBits=1024)
-        mols = [Chem.MolFromSmiles(ismi)
-            for ismi in smi_list]
-        FPs = [AllChem.GetMorganFingerprintAsBitVect(
-        imol, 2, nBits=1024) for imol in mols]
-        molSims = [DataStructs.TanimotoSimilarity(
-                    FP, FP1) for FP in FPs]
+        mol1 = safe_mol_from_smiles(smi)
+        if mol1 is None:
+            return [0] * len(smi_list)
+        FP1 = generator.GetFingerprint(mol1)
+        mols = [safe_mol_from_smiles(ismi) for ismi in smi_list]
+        FPs = [generator.GetFingerprint(imol) for imol in mols if imol is not None]
+        molSims = [DataStructs.TanimotoSimilarity(FP, FP1) for FP in FPs]
         
-    if mode=='smi-smi':
-        mol1 = Chem.MolFromSmiles(smi)
-        mol2 = Chem.MolFromSmiles(smi_list)
-        if mol1==None or mol2==None:
+    elif mode=='smi-smi':
+        mol1 = safe_mol_from_smiles(smi)
+        mol2 = safe_mol_from_smiles(smi_list)
+        if mol1 is None or mol2 is None:
             return 0
 
-        FP1 = AllChem.GetMorganFingerprintAsBitVect(
-        mol1, 2, nBits=1024)
-        FP2 = AllChem.GetMorganFingerprintAsBitVect(
-        mol2, 2, nBits=1024)
-        molSims = DataStructs.TanimotoSimilarity(
-                    FP1, FP2)
+        FP1 = generator.GetFingerprint(mol1)
+        FP2 = generator.GetFingerprint(mol2)
+        molSims = DataStructs.TanimotoSimilarity(FP1, FP2)
         
-    if mode=='smi-FPs':
-        mol1 = Chem.MolFromSmiles(smi)
-        FP1 = AllChem.GetMorganFingerprintAsBitVect(
-        mol1, 2, nBits=1024)
-        FPs=smi_list
-        molSims = [DataStructs.TanimotoSimilarity(
-                    FP, FP1) for FP in FPs]
+    elif mode=='smi-FPs':
+        mol1 = safe_mol_from_smiles(smi)
+        if mol1 is None:
+            return [0] * len(smi_list)
+        FP1 = generator.GetFingerprint(mol1)
+        FPs = smi_list
+        molSims = [DataStructs.TanimotoSimilarity(FP, FP1) for FP in FPs]
+    else:
+        return 0
         
     return molSims
 

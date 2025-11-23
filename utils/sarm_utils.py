@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import copy,re
 from pathlib import Path
-from .common_utils import mapper,get_mol,compute_FP,mol_with_atom_index,get_number_from_string, compute_sim
+from .common_utils import mapper,get_mol,compute_FP,mol_with_atom_index,get_number_from_string, compute_sim,safe_mol_from_smiles
 from functools import partial
 from pandarallel import pandarallel
 
@@ -40,7 +40,9 @@ def attach_left_right(frag, smi):
         return None
     leftDummy=matchDummy[0][0]
     rightDummy=matchDummy[1][0]
-    mol=Chem.MolFromSmiles(smi)
+    mol=safe_mol_from_smiles(smi)
+    if mol is None:
+        return None
     match = mol.GetSubstructMatches(frag_mol)
     Atoms=mol.GetAtoms()
     leftAtmIdx=match[0][leftDummy]
@@ -52,7 +54,7 @@ def attach_left_right(frag, smi):
     
 def has_match(smi, frag=''):
     frag_mol = Chem.MolFromSmarts(frag)
-    mol = Chem.MolFromSmiles(smi)
+    mol = safe_mol_from_smiles(smi)
     if frag_mol == None or mol == None:
         return False
     match = mol.GetSubstructMatches(frag_mol)
@@ -195,7 +197,9 @@ def connect_R1(R, core='', left_or_right=0, return_type='smiles'):
     core_mol_atoms[leftDummy].SetIsotope(0)
     core_mol_atoms[rightDummy].SetIsotope(1)
     
-    r_mol=Chem.MolFromSmiles(R)  ### the isotope of dummy atom is zero
+    r_mol=safe_mol_from_smiles(R)  ### the isotope of dummy atom is zero
+    if r_mol is None:
+        return None
     r_mol=set_isotope(r_mol, 2)
     combo = Chem.CombineMols(core_mol, r_mol)
     match = combo.GetSubstructMatches(Chem.MolFromSmarts('[#0]')) ### detect the dummy atoms
@@ -223,7 +227,9 @@ def connect_R1(R, core='', left_or_right=0, return_type='smiles'):
     products = Chem.ReplaceSubstructs(combo,Chem.MolFromSmarts('[#50]'),Chem.MolFromSmarts('[#0]'),replaceAll=True)
     combo=products[0]
     combo_smi=Chem.MolToSmiles(combo)  ### move the hydrogen
-    combo=Chem.MolFromSmiles(combo_smi) 
+    combo=safe_mol_from_smiles(combo_smi)
+    if combo is None:
+        return None
     combo=Chem.RemoveHs(combo)
     if return_type=='mol':
         return combo
@@ -270,7 +276,9 @@ def replace_nH(ismarts,nH=1,DH=1):
 def match_frag(ismi,ismarts):
     # print("ismi",ismi)
     # print("ismarts",ismarts)
-    mol = Chem.MolFromSmiles(ismi)
+    mol = safe_mol_from_smiles(ismi)
+    if mol is None:
+        return 0
     ismarts=replace_nH(ismarts)
     smartsMol = Chem.MolFromSmarts(ismarts) #,sanitize=False
     matched=mol.GetSubstructMatches(smartsMol)
@@ -884,7 +892,9 @@ def connect2Frags(R, core='', Rsite=0, return_type='smiles'):
     '''
     core_mol=get_mol(core)
     core_mol = copy.deepcopy(core_mol)  ## To protect the inpur molecule object
-    r_mol=Chem.MolFromSmiles(R)  # the isotope of dummy atom is zero
+    r_mol=safe_mol_from_smiles(R)  # the isotope of dummy atom is zero
+    if r_mol is None:
+        return None
     combo = Chem.CombineMols(core_mol, r_mol)
     match = combo.GetSubstructMatches(Chem.MolFromSmarts('[#0]')) ## detect the dummy atoms
     combo_atoms=combo.GetAtoms()
@@ -907,7 +917,9 @@ def connect2Frags(R, core='', Rsite=0, return_type='smiles'):
     products = Chem.ReplaceSubstructs(combo,Chem.MolFromSmarts('[#0]'),Chem.MolFromSmarts('[#1]'),replaceAll=True)
     combo=products[0]
     combo_smi=Chem.MolToSmiles(combo)  ## To remove the hydrogen
-    combo=Chem.MolFromSmiles(combo_smi) 
+    combo=safe_mol_from_smiles(combo_smi)
+    if combo is None:
+        return None
     combo=Chem.RemoveHs(combo)
     if return_type=='mol':
         return combo
@@ -1070,7 +1082,9 @@ def get_single_frag(smi, smarts):
     Frag_smis=[Chem.MolToSmiles(imol) for imol in Frag_mols]
     R_smi=''
     for ifrag in Frag_smis:
-        ifrag_mol=Chem.MolFromSmiles(ifrag)
+        ifrag_mol=safe_mol_from_smiles(ifrag)
+        if ifrag_mol is None:
+            continue
         imatched=ifrag_mol.GetSubstructMatches(Chem.MolFromSmarts(Smarts_tmp))
         # print(f"ifrag={ifrag}")
         # print("imatched=",imatched)

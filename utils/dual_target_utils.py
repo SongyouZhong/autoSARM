@@ -1,7 +1,7 @@
 ''' Set the environment  '''
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem,Draw
-from rdkit.Chem import MCS
+from rdkit.Chem import rdFMCS as MCS
 import pandas as pd
 import numpy as np
 import copy,re
@@ -34,18 +34,29 @@ def kekulize_smi(smi):
         return smi
 
 def remove_dummy(smi):
-    FragMol=Chem.MolFromSmiles(smi)
-    matched=FragMol.GetSubstructMatches(Chem.MolFromSmarts("[#7][#0]"))
-    atoms=FragMol.GetAtoms()
-    for imatch in matched:
-        atoms[imatch[1]].SetAtomicNum(1)
-    # imol.UpdatePropertyCache()
-    Chem.SanitizeMol(FragMol)
-    FragMol=Chem.RemoveHs(FragMol)
-    smi=Chem.MolToSmiles(FragMol)
-    re_p=re.compile(r'\(\*\)|\*|\[\*\]|\-')
-    ifrag_nodummy = re.sub(re_p, '', smi)  ## remove dummy atoms
-    return ifrag_nodummy
+    # 类型和有效性检查
+    if not isinstance(smi, str) or not smi.strip():
+        return ""
+    
+    try:
+        FragMol = Chem.MolFromSmiles(smi)
+        if FragMol is None:
+            return ""
+        
+        matched = FragMol.GetSubstructMatches(Chem.MolFromSmarts("[#7][#0]"))
+        atoms = FragMol.GetAtoms()
+        for imatch in matched:
+            atoms[imatch[1]].SetAtomicNum(1)
+        # imol.UpdatePropertyCache()
+        Chem.SanitizeMol(FragMol)
+        FragMol = Chem.RemoveHs(FragMol)
+        smi = Chem.MolToSmiles(FragMol)
+        re_p = re.compile(r'\(\*\)|\*|\[\*\]|\-')
+        ifrag_nodummy = re.sub(re_p, '', smi)  ## remove dummy atoms
+        return ifrag_nodummy
+    except Exception as e:
+        print(f"Error in remove_dummy (line 36): {e}")
+        return ""
     
 def get_RGrps_dummy(mol,Core_smi):
     mol=get_mol(mol)
@@ -244,18 +255,29 @@ def is_child(child,parent):
         return False
 
 def remove_dummy(smi):
-    FragMol=Chem.MolFromSmiles(smi)
-    matched=FragMol.GetSubstructMatches(Chem.MolFromSmarts("[#7][#0]"))
-    atoms=FragMol.GetAtoms()
-    for imatch in matched:
-        atoms[imatch[1]].SetAtomicNum(1)
-    # imol.UpdatePropertyCache()
-    Chem.SanitizeMol(FragMol)
-    FragMol=Chem.RemoveHs(FragMol)
-    smi=Chem.MolToSmiles(FragMol)
-    re_p=re.compile(r'\(\*\)|\*|\[\*\]|\-')
-    ifrag_nodummy = re.sub(re_p, '', smi)  ## remove dummy atoms
-    return ifrag_nodummy
+    # 类型和有效性检查
+    if not isinstance(smi, str) or not smi.strip():
+        return ""
+    
+    try:
+        FragMol = Chem.MolFromSmiles(smi)
+        if FragMol is None:
+            return ""
+        
+        matched = FragMol.GetSubstructMatches(Chem.MolFromSmarts("[#7][#0]"))
+        atoms = FragMol.GetAtoms()
+        for imatch in matched:
+            atoms[imatch[1]].SetAtomicNum(1)
+        # imol.UpdatePropertyCache()
+        Chem.SanitizeMol(FragMol)
+        FragMol = Chem.RemoveHs(FragMol)
+        smi = Chem.MolToSmiles(FragMol)
+        re_p = re.compile(r'\(\*\)|\*|\[\*\]|\-')
+        ifrag_nodummy = re.sub(re_p, '', smi)  ## remove dummy atoms
+        return ifrag_nodummy
+    except Exception as e:
+        print(f"Error in remove_dummy (line 254): {e}")
+        return ""
 
 def real_sonNode(smi,children_smis,parent_dict):
     has_parent=set(children_smis) & set(parent_dict[smi])

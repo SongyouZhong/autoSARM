@@ -34,9 +34,12 @@ highlightDict = "[{'col':'TLR7IC50', 'type':'means', 'relation':'<', 'value':10}
 class argNamespace:
     ''' for test in jupyter notebook  '''
     def __init__(self):  
-        self.protein = '/mnt/public-bg6/jay.zhang/Codes-public/Vina/Test/8jzx.pdb'  # 'self'引用的是类实例自身  
-        self.ligand = '/mnt/public-bg6/jay.zhang/Codes-public/Vina/Test/c5.pdb' 
-        self.addH = 1
+        # TODO: Configure these parameters for Jupyter notebook testing
+        self.fragment_core = 'c1ccccc1'  # Example: benzene ring
+        self.rootTitle = 'Example_Tree'
+        self.workFolder = 'SAR_Results'
+        self.inputFile = 'input.csv'
+        self.treeContent = ['double-cut', 'single-cut']
 
 
 def main(args):
@@ -46,6 +49,7 @@ def main(args):
     highlightDict = eval(args.highlightDict)
     max_level = args.maxLevel
     treeContent = eval(args.treeContent)
+    inputFile = args.inputFile  # Input CSV file name (default: input.csv)
 
     actCols = []
     for icol in highlightDict:
@@ -58,15 +62,21 @@ def main(args):
         roots=[fragment_core]
         dfList = []
         if 'double-cut' in treeContent:
-            df_tmp=pd.read_csv(f"{workFolder}/SAR_Tables/Combine_Table_info.csv")
-            df_tmp["SMILES"] = df_tmp["Key2"]
+            df_tmp=pd.read_csv(f"{workFolder}/Combine_Table_info.csv")
+            if "Key2" in df_tmp.columns:
+                df_tmp["SMILES"] = df_tmp["Key2"]
+            elif "SMILES" not in df_tmp.columns:
+                raise ValueError("Combine_Table_info.csv must have either 'Key2' or 'SMILES' column")
             dfList.append(df_tmp)
         if 'single-cut' in treeContent:
-            df_tmp=pd.read_csv(f"{workFolder}/SAR_Tables/singleCut_Table_info.csv")
-            df_tmp["SMILES"] = df_tmp["Key2"]
+            df_tmp=pd.read_csv(f"{workFolder}/singleCut_Table_info.csv")
+            if "Key2" in df_tmp.columns:
+                df_tmp["SMILES"] = df_tmp["Key2"]
+            elif "SMILES" not in df_tmp.columns:
+                raise ValueError("singleCut_Table_info.csv must have either 'Key2' or 'SMILES' column")
             dfList.append(df_tmp)
         if 'whole-compound' in treeContent:
-            df_tmp=pd.read_csv(f"{workFolder}/input.csv")
+            df_tmp=pd.read_csv(f"{workFolder}/{inputFile}")
             df_tmp["SMILES"] = df_tmp["smiles"].parallel_apply(canonic_smiles)
             df_tmp["Items_count"] = 1
             dfList.append(df_tmp)
@@ -74,7 +84,7 @@ def main(args):
 
         opfile=open(f'{treePath.as_posix()}/Combine_Table_info_Tree_{rootTitle}.txt','w')
         ## active dataset
-        df_act=pd.read_csv(f"{workFolder}/input.csv")
+        df_act=pd.read_csv(f"{workFolder}/{inputFile}")
         # df_act["actValue"]=9-df_act["actValue"].apply(np.log10)
         df_act=float_row(df_act, cols=actCols,dropna=False)
         actCols=actCols
@@ -222,6 +232,7 @@ def get_parser():
     parser.add_argument("--rootTitle", help="the title of pdf as rootTile", default='')
     parser.add_argument("--maxLevel", help="max level of the SAR tree", default=5, type=int)
     parser.add_argument("--workFolder", help="the workfolder of sar project", default='')
+    parser.add_argument("--inputFile", help="the input CSV file name (default: input.csv)", default='input.csv', type=str)
     parser.add_argument("--treeContent", help="the content in the tree: ['double-cut','','']", type=str, default="['double-cut']")
 
     parser.add_argument("--highlightDict", help="the dict to control the highlight", default='', type=str)

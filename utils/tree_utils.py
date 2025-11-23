@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 from my_toolset.my_utils import get_mol,mapper
 from my_toolset.drawing_utils import show_mols
+from utils.common_utils import safe_mol_from_smiles
 import re
 from rdkit import Chem
 import os,sys
@@ -305,7 +306,9 @@ def show_mols(smiles_mols,legends=[],subImgSize=(600,600)):
     return png
 
 def show_mols_cairo(ismi,legend, highlightInfo=False):
-    mol = Chem.MolFromSmiles(ismi)
+    mol = safe_mol_from_smiles(ismi)
+    if mol is None:
+        return None
     # 遍历分子中的原子，将虚拟原子（*）的标签改为 "A"
     for atom in mol.GetAtoms():
         if atom.GetSymbol() == '*':  # 判断虚拟虚拟原子的符号通常为 *
@@ -344,7 +347,9 @@ def match_frag(ismi,ismarts):
     # print("ismi",ismi)
     # print("ismarts",ismarts)
     try:
-        mol = Chem.MolFromSmiles(ismi)
+        mol = safe_mol_from_smiles(ismi)
+        if mol is None:
+            return 0
         ismarts=replace_nH(ismarts)
         smartsMol = Chem.MolFromSmarts(ismarts) #,sanitize=False
         matched=mol.GetSubstructMatches(smartsMol)
@@ -419,6 +424,13 @@ def get_activity_info(df_act, frag, actCols=[], highlightDictList=[]):
             for ihighlightDict in highlightDictList:
                 irelation=ihighlightDict['relation']
                 itype=ihighlightDict['type']
+                # Support both singular and plural forms (mean/means, median/medians, std/stds)
+                if itype == 'means':
+                    itype = 'mean'
+                elif itype == 'medians':
+                    itype = 'median'
+                elif itype == 'stds':
+                    itype = 'std'
                 ivalue=float(ihighlightDict['value'])
                 icol=ihighlightDict['col']
 

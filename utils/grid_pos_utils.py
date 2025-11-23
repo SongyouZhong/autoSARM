@@ -2,7 +2,7 @@ import os,sys
 from pathlib import Path
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem,Draw
-from rdkit.Chem import MCS
+from rdkit.Chem import rdFMCS as MCS
 import pandas as pd
 import numpy as np
 import glob

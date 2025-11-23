@@ -1,0 +1,4 @@
+/SAR_Results
+**/__pycache__/
+**/*.pyc
+**/*.log
