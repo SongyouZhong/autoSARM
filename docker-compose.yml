@@ -1,39 +1,18 @@
+# =============================================================================
+# AutoSARM Docker Compose Configuration
+# =============================================================================
+
 services:
   autosarm:
     build:
       context: .
       dockerfile: Dockerfile
+      target: production
     image: autosarm:${IMAGE_TAG:-latest}
     container_name: autosarm
     volumes:
-      # 挂载当前目录到容器（用于开发）
-      - .:/app
-      # 挂载数据目录（如果有外部数据）
-      - ./data:/app/data
-      # 挂载结果目录
-      - ./SAR_Results:/app/SAR_Results
+      - ./data:/app/data:ro
+      - ./output:/app/output
     working_dir: /app
-    # 如果需要运行 Jupyter
-    ports:
-      - "8888:8888"
-    # 保持容器运行
-    stdin_open: true
-    tty: true
-    command: /bin/bash
-    
-  # 如果需要 Jupyter Notebook 服务
-  autosarm-jupyter:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: autosarm:${IMAGE_TAG:-latest}
-    container_name: autosarm-jupyter
-    volumes:
-      - .:/app
-      - ./data:/app/data
-      - ./SAR_Results:/app/SAR_Results
-    working_dir: /app
-    ports:
-      - "8888:8888"
-    command: >
-      bash -c "jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password=''"
+    entrypoint: ["micromamba", "run", "-n", "base", "autosarm"]
+    command: ["--help"]

@@ -1,224 +1,219 @@
-# Docker 使用说明
+# AutoSARM Docker Usage Guide
 
-本文档介绍如何使用 Docker 和 micromamba 运行 autoSARM 项目。
+This guide explains how to use AutoSARM with Docker.
 
-## 📋 前置要求
+## Prerequisites
 
-- Docker Engine 20.10+ 
-- Docker Compose 1.29+ (可选，推荐)
-- 至少 4GB 可用磁盘空间
+- Docker >= 20.10
+- Docker Compose >= 2.0
 
-## 🚀 快速开始
+## Quick Start
 
-### 方法 1：使用 Docker Compose（推荐）
-
-#### 1.1 构建并启动容器
+### 1. Build the Image
 
 ```bash
+# Build production image
+./docker-manage.sh build
 
-#快速构建（推荐）
-./quick_build.sh
-
-# 构建镜像
-docker-compose build
-
-# 启动交互式 Shell
-docker-compose run --rm autosarm
-
-# 或者启动 Jupyter Notebook
-docker-compose up autosarm-jupyter
+# Or build development image
+./docker-manage.sh build development
 ```
 
-#### 1.2 在容器中运行分析
-
-进入容器后，可以运行以下命令：
+### 2. Run SAR Analysis
 
 ```bash
-# 生成 SAR 表格
-python create_sarm.py \
-    --csvFile SAR_Results/input.csv \
-    --column IC50_uM \
-    --type smiles \
-    --log 1 \
-    --minimumSite1 3 \
-    --minimumSite2 3 \
-    --n_jobs 8 \
-    --save_folder SAR_Results \
-    --csv2excel 1
+# Place your data in the data/ directory
+cp your_compounds.csv data/
 
-# 生成 SAR 树
-python create_tree.py \
-    --fragment_core "*CN1CCC(c2ccc3[nH]c(-c4cc(CO*)c5ncnn5c4)c(C(C)C)c3c2)CC1" \
-    --rootTitle "Table_100_combine" \
-    --workFolder ./SAR_Results \
+# Run SAR matrix generation
+./docker-manage.sh run sarm --csvFile /app/data/your_compounds.csv --column IC50_uM --save_folder /app/output
+```
+
+### 3. View Results
+
+Results will be saved to the `output/` directory.
+
+## Commands
+
+### Using docker-manage.sh
+
+```bash
+# Build image
+./docker-manage.sh build [production|development]
+
+# Run SAR generation
+./docker-manage.sh run sarm --csvFile /app/data/compounds.csv --column IC50_uM
+
+# Start development shell
+./docker-manage.sh dev
+
+# Run tests
+./docker-manage.sh test
+
+# Start Jupyter notebook
+./docker-manage.sh jupyter
+
+# Show status
+./docker-manage.sh status
+
+# Clean up
+./docker-manage.sh clean
+```
+
+### Using Docker Compose Directly
+
+```bash
+# Build
+docker compose build
+
+# Run SAR generation
+docker compose run --rm autosarm sarm \
+    --csvFile /app/data/compounds.csv \
+    --column IC50_uM \
+    --save_folder /app/output
+
+# Start development container
+docker compose run --rm autosarm-dev
+
+# Run tests
+docker compose run --rm autosarm-test
+
+# Start Jupyter
+docker compose up autosarm-jupyter
+```
+
+## Directory Structure
+
+```
+autoSARM/
+├── data/           # Input data (mounted to /app/data)
+├── output/         # Output results (mounted to /app/output)
+├── notebooks/      # Jupyter notebooks (mounted to /app/notebooks)
+└── ...
+```
+
+## Examples
+
+### Example 1: Basic SAR Matrix Generation
+
+```bash
+# Prepare data
+mkdir -p data output
+cp examples/example_compounds.csv data/
+
+# Run analysis
+./docker-manage.sh run sarm \
+    --csvFile /app/data/example_compounds.csv \
+    --column IC50_uM \
+    --save_folder /app/output/results \
+    --minimumSite1 2 \
+    --minimumSite2 2
+
+# Check results
+ls -la output/results/
+```
+
+### Example 2: Create SAR Tree
+
+```bash
+# First run SAR matrix generation, then create tree
+./docker-manage.sh run tree \
+    --fragment_core "c1ccc(*)cc1*" \
+    --workFolder /app/output/results \
+    --rootTitle MyTree \
     --maxLevel 5
 ```
 
-### 方法 2：使用原生 Docker 命令
-
-#### 2.1 构建镜像
+### Example 3: Interactive Development
 
 ```bash
-docker build -t autosarm:latest .
+# Start development shell
+./docker-manage.sh dev
+
+# Inside container:
+python -c "from autosarm import fragmentize; print('OK')"
+pytest tests/ -v
+python examples/basic_usage.py
 ```
 
-#### 2.2 运行容器
+### Example 4: Jupyter Notebook
 
 ```bash
-# 交互式模式
-docker run -it --rm \
-    -v $(pwd):/app \
-    -v $(pwd)/SAR_Results:/app/SAR_Results \
-    autosarm:latest
+# Start Jupyter server
+./docker-manage.sh jupyter
 
-# 运行特定命令
-docker run --rm \
-    -v $(pwd):/app \
-    autosarm:latest \
-    python create_sarm.py --csvFile SAR_Results/input.csv --column IC50_uM --type smiles
+# Open browser at http://localhost:8888
+# Create notebooks in the notebooks/ directory
 ```
 
-#### 2.3 运行 Jupyter Notebook
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IMAGE_TAG` | `latest` | Docker image tag |
+| `JUPYTER_PORT` | `8888` | Jupyter notebook port |
+
+Example:
+```bash
+IMAGE_TAG=v1.0 ./docker-manage.sh build
+JUPYTER_PORT=9999 ./docker-manage.sh jupyter
+```
+
+## Troubleshooting
+
+### Permission Issues
+
+If you encounter permission issues with output files:
 
 ```bash
-docker run -it --rm \
-    -p 8888:8888 \
-    -v $(pwd):/app \
-    autosarm:latest \
-    jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+# Fix ownership
+sudo chown -R $USER:$USER output/
 ```
 
-然后在浏览器中打开 `http://localhost:8888`
-
-## 📁 数据卷挂载说明
-
-容器中的重要目录映射：
-
-| 容器内路径 | 宿主机路径 | 说明 |
-|-----------|-----------|------|
-| `/app` | `.` (项目根目录) | 项目代码和配置文件 |
-| `/app/data` | `./data` | 输入数据文件 |
-| `/app/SAR_Results` | `./SAR_Results` | SAR 分析结果 |
-
-## 🔧 环境配置
-
-### 查看已安装的包
+### Build Failures
 
 ```bash
-# 进入容器
-docker-compose run --rm autosarm bash
-
-# 查看 conda 环境
-micromamba list
-
-# 查看 Python 版本
-python --version
+# Clean and rebuild
+./docker-manage.sh clean
+./docker-manage.sh build
 ```
 
-### 安装额外的包
+### Memory Issues
 
-如果需要安装额外的 Python 包：
+For large datasets, increase Docker memory limit:
 
 ```bash
-# 使用 micromamba
-micromamba install -n base -c conda-forge package_name
-
-# 或使用 pip
-pip install package_name
+# In Docker Desktop settings, increase memory allocation
+# Or use command line:
+docker compose run --rm -m 8g autosarm sarm --csvFile ...
 ```
 
-**注意**：容器重启后，未保存到镜像的包会丢失。如需永久安装，需修改 `env.yaml` 并重新构建镜像。
+## Multi-Platform Build
 
-## 🐛 常见问题
-
-### 1. 权限问题
-
-如果遇到文件权限问题，可以在运行容器时添加用户映射：
+To build for multiple platforms:
 
 ```bash
-docker run -it --rm \
-    -u $(id -u):$(id -g) \
-    -v $(pwd):/app \
-    autosarm:latest
+docker buildx build --platform linux/amd64,linux/arm64 -t autosarm:latest .
 ```
 
-### 2. 内存不足
+## CI/CD Integration
 
-如果处理大型数据集时内存不足，可以增加 Docker 内存限制：
+Example GitHub Actions workflow:
 
-```bash
-docker run -it --rm \
-    --memory="8g" \
-    -v $(pwd):/app \
-    autosarm:latest
+```yaml
+name: Build and Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Build Docker image
+        run: docker compose build autosarm-test
+      
+      - name: Run tests
+        run: docker compose run --rm autosarm-test
 ```
-
-### 3. Graphviz 相关错误
-
-如果遇到 Graphviz 错误，确保系统级 Graphviz 已安装。可以重新构建镜像：
-
-```bash
-docker-compose build --no-cache
-```
-
-### 4. RDKit 导入错误
-
-确保使用的是容器内的 Python 环境：
-
-```bash
-# 在容器内检查
-which python
-# 应该输出: /opt/conda/bin/python
-```
-
-## 📝 开发建议
-
-### 1. 使用开发模式
-
-在 `docker-compose.yml` 中已经配置了代码目录挂载，修改代码后无需重新构建镜像。
-
-### 2. 调试 Python 代码
-
-```bash
-# 启动容器并进入 IPython
-docker-compose run --rm autosarm ipython
-
-# 或使用 Jupyter
-docker-compose up autosarm-jupyter
-```
-
-### 3. 运行测试
-
-```bash
-docker-compose run --rm autosarm pytest tests/
-```
-
-## 🔒 生产环境部署
-
-### 1. 多阶段构建优化（可选）
-
-可以创建一个优化的生产版 Dockerfile：
-
-```dockerfile
-# 见 Dockerfile.prod
-```
-
-### 2. 安全性建议
-
-- 不要在生产环境中使用 `--allow-root` 运行 Jupyter
-- 设置 Jupyter token 或密码
-- 使用非 root 用户运行容器
-- 定期更新基础镜像
-
-## 📚 更多信息
-
-- [Docker 官方文档](https://docs.docker.com/)
-- [Micromamba 文档](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html)
-- [autoSARM 项目 README](./README.md)
-
-## 🤝 支持
-
-如果遇到问题，请查看：
-1. 项目 README.md
-2. GitHub Issues
-3. Docker logs: `docker-compose logs`

@@ -1,0 +1,24 @@
+name: autosarm
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - rdkit>=2023.03.1
+  - pandas>=1.5.0
+  - numpy>=1.21.0
+  - pandarallel>=1.6.0
+  - matplotlib>=3.5.0
+  - seaborn>=0.12.0
+  - plotly>=5.0.0
+  - openpyxl>=3.0.0
+  - graphviz>=0.20.0
+  - svglib>=1.5.0
+  - reportlab>=3.6.0
+  - tqdm>=4.64.0
+  - pip
+  - ipython
+  - pytest
+  - pytest-cov
+  - pip:
+    - graphviz

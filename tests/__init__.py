@@ -1,0 +1,3 @@
+"""
+Tests for AutoSARM package.
+"""

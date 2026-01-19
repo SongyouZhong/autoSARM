@@ -1,0 +1,134 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autosarm"
+version = "1.0.0"
+description = "Automatic Structure-Activity Relationship Matrix Generator for drug discovery research"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Jie Zhang", email = "jie.zhang@example.com"}
+]
+keywords = [
+    "drug-discovery",
+    "sar",
+    "structure-activity-relationship",
+    "cheminformatics",
+    "rdkit",
+    "molecular-fragmentation"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "rdkit>=2023.03.1",
+    "pandas>=1.5.0",
+    "numpy>=1.21.0",
+    "pandarallel>=1.6.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.12.0",
+    "plotly>=5.0.0",
+    "openpyxl>=3.0.0",
+    "graphviz>=0.20.0",
+    "svglib>=1.5.0",
+    "reportlab>=3.6.0",
+    "tqdm>=4.64.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.2.0",
+    "myst-parser>=1.0.0",
+]
+jupyter = [
+    "jupyter>=1.0.0",
+    "ipython>=8.0.0",
+]
+
+[project.scripts]
+autosarm = "autosarm.cli.main:main"
+autosarm-sarm = "autosarm.cli.create_sarm:main"
+autosarm-tree = "autosarm.cli.create_tree:main"
+autosarm-print = "autosarm.cli.print_sar:main"
+
+[project.urls]
+Homepage = "https://github.com/yourorg/autosarm"
+Documentation = "https://github.com/yourorg/autosarm#readme"
+Repository = "https://github.com/yourorg/autosarm"
+Issues = "https://github.com/yourorg/autosarm/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+autosarm = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py39', 'py310', 'py311']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+    | \.venv
+    | build
+    | dist
+    | \.eggs
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip_gitignore = true
+skip = [".git", ".venv", "build", "dist"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["src/autosarm"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

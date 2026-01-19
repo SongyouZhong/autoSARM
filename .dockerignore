@@ -1,32 +1,45 @@
-# Python 缓存文件
+# =============================================================================
+# AutoSARM Docker Ignore File
+# =============================================================================
+
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
 
-# 虚拟环境
+# Virtual environments
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
+.venv/
 
 # Jupyter Notebook
-.ipynb_checkpoints
+.ipynb_checkpoints/
 *.ipynb_checkpoints/
+notebooks/
 
-# 日志文件
+# Logs and temp files
 *.log
 logs/
+*.tmp
+*.temp
 
-# 系统文件
+# Data and output (mounted as volumes)
+data/
+output/
+SAR_Results/
+
+# System files
 .DS_Store
 .DS_Store?
 ._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # Git
@@ -34,20 +47,34 @@ Thumbs.db
 .gitignore
 .gitattributes
 
-# Docker
-Dockerfile
+# Docker files (avoid recursive copy)
+Dockerfile*
 .dockerignore
-docker-compose.yml
+docker-compose*.yml
 
-# IDE
+# IDE and editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
 
-# 临时文件
-*.tmp
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Documentation build
+docs/_build/
+
+# Environment files
+.env
+.env.*
+!.env.example
 *.temp
 tmp/
 temp/
