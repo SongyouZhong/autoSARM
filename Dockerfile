@@ -47,10 +47,11 @@ USER root
 # Fix /tmp permissions
 RUN chmod 1777 /tmp
 
-# Install runtime dependencies only
+# Install runtime dependencies (graphviz for rendering, curl for healthcheck)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     graphviz \
+    curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -66,9 +67,13 @@ COPY --from=builder --chown=$MAMBA_USER:$MAMBA_USER /app /app
 COPY --chown=$MAMBA_USER:$MAMBA_USER README.md /app/
 COPY --chown=$MAMBA_USER:$MAMBA_USER examples/ /app/examples/
 
+# Copy docker entrypoint
+COPY --chown=$MAMBA_USER:$MAMBA_USER docker/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Create data directories (before switching to non-root user)
-RUN mkdir -p /app/data /app/output && \
-    chown -R $MAMBA_USER:$MAMBA_USER /app/data /app/output
+RUN mkdir -p /app/data /app/output /app/logs /tmp/autosarm && \
+    chown -R $MAMBA_USER:$MAMBA_USER /app/data /app/output /app/logs /tmp/autosarm
 
 # Switch to non-root user
 USER $MAMBA_USER
@@ -79,10 +84,13 @@ ARG MAMBA_DOCKERFILE_ACTIVATE=1
 # Set Python path
 ENV PYTHONPATH=/app/src
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD micromamba run -n base python -c "import autosarm; print('OK')" || exit 1
+# Expose API port
+EXPOSE 8030
 
-# Default command - show help
-ENTRYPOINT ["micromamba", "run", "-n", "base", "autosarm"]
-CMD ["--help"]
+# Health check — hit the /health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8030}/health || exit 1
+
+# Default: start worker (API + DB polling)
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
+CMD ["serve"]

@@ -22,3 +22,9 @@ dependencies:
   - pytest-cov
   - pip:
     - graphviz
+    - fastapi>=0.100.0
+    - "uvicorn[standard]>=0.22.0"
+    - asyncpg>=0.27.0
+    - aiohttp>=3.8.0
+    - pyyaml>=6.0
+    - python-dotenv>=1.0.0

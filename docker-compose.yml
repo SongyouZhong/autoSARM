@@ -1,18 +1,87 @@
 # =============================================================================
 # AutoSARM Docker Compose Configuration
+# 多实例 Worker 模式 — 每个实例自动从 PostgreSQL 轮询任务
+# =============================================================================
+#
+# 启动方式:
+#   全部启动:     docker compose up -d
+#   启动 1 个:    docker compose up -d autosarm-1
+#   启动 2 个:    docker compose up -d autosarm-1 autosarm-2
+#   动态扩展:     docker compose up -d --scale autosarm-1=3  (需去掉 container_name)
+#   查看日志:     docker compose logs -f
+#   查看状态:     docker compose ps
+#   健康检查:     curl http://localhost:8030/health
+#
+# 每个 Worker 实例:
+#   1. 启动 FastAPI 服务 (健康检查端点)
+#   2. 轮询 PostgreSQL 获取 pending 状态的 sarm_analysis 任务
+#   3. 使用 SELECT FOR UPDATE SKIP LOCKED 确保多实例不会重复领取任务
+#   4. 从 SeaweedFS 下载输入文件 → 执行 SARM/Tree 计算 → 上传结果到 SeaweedFS
 # =============================================================================
 
+x-sarm-worker: &sarm-worker
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: production
+  image: autosarm:${IMAGE_TAG:-latest}
+  restart: on-failure:3
+  env_file:
+    - .env
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  environment: &sarm-env
+    # --- 数据库连接 ---
+    - DB_HOST=host.docker.internal
+    - DB_PORT=${DB_PORT:-5432}
+    - DB_USER=${DB_USER:-admin}
+    - DB_PASSWORD=${DB_PASSWORD:-secret}
+    - DB_NAME=${DB_NAME:-mydatabase}
+    # --- SeaweedFS 连接 ---
+    - SEAWEED_FILER_ENDPOINT=${SEAWEED_FILER_ENDPOINT:-http://host.docker.internal:8888}
+    - SEAWEED_BUCKET=${SEAWEED_BUCKET:-astramolecula}
+    # --- 应用配置 ---
+    - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    - POLL_INTERVAL=${POLL_INTERVAL:-30}
+    - TEMP_DIR=/tmp/autosarm
+  volumes:
+    - sarm-data:/app/data
+    - sarm-logs:/app/logs
+  networks:
+    - sarm-network
+  healthcheck:
+    test: ["CMD-SHELL", "curl -f http://localhost:${PORT:-8030}/health || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 15s
+
 services:
-  autosarm:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    image: autosarm:${IMAGE_TAG:-latest}
-    container_name: autosarm
-    volumes:
-      - ./data:/app/data:ro
-      - ./output:/app/output
-    working_dir: /app
-    entrypoint: ["micromamba", "run", "-n", "base", "autosarm"]
-    command: ["--help"]
+  # --- Worker 1 ---
+  autosarm-1:
+    <<: *sarm-worker
+    container_name: autosarm-1
+    ports:
+      - "${SARM_PORT_1:-8030}:8030"
+
+  # --- Worker 2 ---
+  autosarm-2:
+    <<: *sarm-worker
+    container_name: autosarm-2
+    ports:
+      - "${SARM_PORT_2:-8031}:8030"
+
+  # --- Worker 3 ---
+  autosarm-3:
+    <<: *sarm-worker
+    container_name: autosarm-3
+    ports:
+      - "${SARM_PORT_3:-8032}:8030"
+
+volumes:
+  sarm-data:
+  sarm-logs:
+
+networks:
+  sarm-network:
+    driver: bridge

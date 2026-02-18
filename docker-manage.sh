@@ -1,6 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # AutoSARM Docker Management Script
+# 支持多实例 Worker 模式
 # =============================================================================
 
 set -e
@@ -30,128 +31,164 @@ usage() {
     echo "Usage: $0 <command> [options]"
     echo ""
     echo "Commands:"
-    echo "  build [target]    Build Docker image (targets: production, development)"
-    echo "  run [args]        Run SAR matrix generation with arguments"
-    echo "  dev               Start development container with shell"
-    echo "  test              Run test suite"
-    echo "  jupyter           Start Jupyter notebook server"
-    echo "  shell             Start interactive shell in production container"
+    echo "  build             Build Docker image"
+    echo "  start [n]         Start n worker instances (default: all 3)"
+    echo "  stop              Stop all workers"
+    echo "  restart           Restart all workers"
+    echo "  run [args]        Run SAR matrix generation locally (CLI mode)"
+    echo "  shell             Start interactive shell in a worker container"
     echo "  clean             Remove containers and images"
-    echo "  logs [service]    Show logs for a service"
+    echo "  logs [service]    Show logs (default: all workers)"
     echo "  status            Show status of containers"
+    echo "  health            Check health of all workers"
     echo ""
     echo "Examples:"
-    echo "  $0 build                                    # Build production image"
-    echo "  $0 build development                        # Build development image"
+    echo "  $0 build                                    # Build image"
+    echo "  $0 start                                    # Start all 3 workers"
+    echo "  $0 start 1                                  # Start only worker 1"
+    echo "  $0 start 2                                  # Start workers 1 and 2"
+    echo "  $0 stop                                     # Stop all workers"
+    echo "  $0 logs autosarm-1                          # Logs for worker 1"
+    echo "  $0 health                                   # Check health endpoints"
     echo "  $0 run sarm --csvFile data/compounds.csv --column IC50_uM"
-    echo "  $0 dev                                      # Start dev shell"
-    echo "  $0 test                                     # Run tests"
-    echo "  $0 jupyter                                  # Start Jupyter"
     echo ""
 }
 
 # Build Docker image
 cmd_build() {
-    local target="${1:-production}"
-    print_msg $BLUE "Building AutoSARM Docker image (target: $target)..."
-    
-    docker compose build --build-arg BUILDKIT_INLINE_CACHE=1 \
-        $([ "$target" = "development" ] && echo "autosarm-dev" || echo "autosarm")
-    
+    print_msg $BLUE "Building AutoSARM Docker image..."
+
+    docker compose -f "$COMPOSE_FILE" build
+
     print_msg $GREEN "Build complete!"
 }
 
-# Run SAR generation
-cmd_run() {
-    print_msg $BLUE "Running AutoSARM..."
-    
-    # Create output directory if not exists
+# Start workers
+cmd_start() {
+    local count="${1:-3}"
+    print_msg $BLUE "Starting $count AutoSARM worker(s)..."
+
     mkdir -p output data
-    
-    docker compose run --rm autosarm "$@"
+
+    case "$count" in
+        1)
+            docker compose -f "$COMPOSE_FILE" up -d autosarm-1
+            ;;
+        2)
+            docker compose -f "$COMPOSE_FILE" up -d autosarm-1 autosarm-2
+            ;;
+        *)
+            docker compose -f "$COMPOSE_FILE" up -d
+            ;;
+    esac
+
+    print_msg $GREEN "Workers started!"
+    echo ""
+    cmd_status
 }
 
-# Start development container
-cmd_dev() {
-    print_msg $BLUE "Starting development container..."
-    
-    mkdir -p output data notebooks
-    
-    docker compose run --rm autosarm-dev
+# Stop workers
+cmd_stop() {
+    print_msg $YELLOW "Stopping all workers..."
+    docker compose -f "$COMPOSE_FILE" down
+    print_msg $GREEN "All workers stopped"
 }
 
-# Run tests
-cmd_test() {
-    print_msg $BLUE "Running tests..."
-    
-    docker compose run --rm autosarm-test
-    
-    print_msg $GREEN "Tests complete!"
+# Restart workers
+cmd_restart() {
+    cmd_stop
+    sleep 2
+    cmd_start "${1:-3}"
 }
 
-# Start Jupyter
-cmd_jupyter() {
-    print_msg $BLUE "Starting Jupyter Notebook..."
-    print_msg $YELLOW "Access at: http://localhost:${JUPYTER_PORT:-8888}"
-    
-    mkdir -p output data notebooks
-    
-    docker compose up autosarm-jupyter
+# Run SAR generation (CLI mode, one-off)
+cmd_run() {
+    print_msg $BLUE "Running AutoSARM (CLI mode)..."
+
+    mkdir -p output data
+
+    docker compose -f "$COMPOSE_FILE" run --rm autosarm-1 "$@"
 }
 
 # Start shell
 cmd_shell() {
     print_msg $BLUE "Starting interactive shell..."
-    
-    docker compose run --rm --entrypoint /bin/bash autosarm
+
+    docker compose -f "$COMPOSE_FILE" run --rm autosarm-1 shell
 }
 
 # Clean up
 cmd_clean() {
     print_msg $YELLOW "Cleaning up Docker resources..."
-    
-    docker compose down --rmi local --volumes --remove-orphans 2>/dev/null || true
+
+    docker compose -f "$COMPOSE_FILE" down --rmi local --volumes --remove-orphans 2>/dev/null || true
     docker image prune -f
-    
+
     print_msg $GREEN "Cleanup complete!"
 }
 
 # Show logs
 cmd_logs() {
-    local service="${1:-autosarm}"
-    docker compose logs -f "$service"
+    local service="${1:-}"
+    if [ -n "$service" ]; then
+        docker compose -f "$COMPOSE_FILE" logs -f "$service"
+    else
+        docker compose -f "$COMPOSE_FILE" logs -f
+    fi
 }
 
 # Show status
 cmd_status() {
     print_msg $BLUE "Container Status:"
-    docker compose ps
-    
+    docker compose -f "$COMPOSE_FILE" ps
+
     echo ""
     print_msg $BLUE "Images:"
     docker images | grep autosarm || echo "No autosarm images found"
+}
+
+# Health check
+cmd_health() {
+    print_msg $BLUE "Checking worker health..."
+
+    local ports=("${SARM_PORT_1:-8030}" "${SARM_PORT_2:-8031}" "${SARM_PORT_3:-8032}")
+    local names=("autosarm-1" "autosarm-2" "autosarm-3")
+
+    for i in 0 1 2; do
+        local port="${ports[$i]}"
+        local name="${names[$i]}"
+        local response
+
+        response=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${port}/health" 2>/dev/null) || response="000"
+
+        if [ "$response" = "200" ]; then
+            print_msg $GREEN "  $name (port $port): healthy"
+        else
+            print_msg $RED "  $name (port $port): unreachable (HTTP $response)"
+        fi
+    done
 }
 
 # Main
 main() {
     local cmd="${1:-}"
     shift || true
-    
+
     case "$cmd" in
         build)
-            cmd_build "$@"
+            cmd_build
+            ;;
+        start|up)
+            cmd_start "$@"
+            ;;
+        stop|down)
+            cmd_stop
+            ;;
+        restart)
+            cmd_restart "$@"
             ;;
         run)
             cmd_run "$@"
-            ;;
-        dev)
-            cmd_dev
-            ;;
-        test)
-            cmd_test
-            ;;
-        jupyter)
-            cmd_jupyter
             ;;
         shell)
             cmd_shell
@@ -162,8 +199,11 @@ main() {
         logs)
             cmd_logs "$@"
             ;;
-        status)
+        status|ps)
             cmd_status
+            ;;
+        health)
+            cmd_health
             ;;
         help|--help|-h)
             usage

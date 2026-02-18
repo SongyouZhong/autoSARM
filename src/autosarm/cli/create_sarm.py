@@ -119,6 +119,11 @@ def run_sarm(args) -> None:
         logging.info(f"Round 1 fragments: {len(df_round1)}")
         logging.info(f"Round 2 fragments: {len(df_round2)}")
         
+        # Save processed input data for downstream commands (e.g., tree)
+        input_csv_path = os.path.join(args.save_folder, 'input.csv')
+        df_sele.to_csv(input_csv_path, index=False)
+        logging.info(f"Saved processed input data to: {input_csv_path}")
+
         logging.info("Creating SARM tables...")
         df_left, df_right, df_combine = create_sarm_matrix(
             df_round1, df_round2, df_sele,
