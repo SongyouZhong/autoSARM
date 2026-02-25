@@ -26,6 +26,7 @@ x-sarm-worker: &sarm-worker
     target: production
   image: autosarm:${IMAGE_TAG:-latest}
   restart: on-failure:3
+  shm_size: '2gb'
   env_file:
     - .env
   extra_hosts:

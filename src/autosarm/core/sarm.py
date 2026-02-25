@@ -811,7 +811,10 @@ def create_sarm_matrix(
                             ]
                         return [irow['Smi'], '', '']
                     
-                    if HAS_PANDARALLEL:
+                    # Use parallel_apply only when DataFrame has enough rows
+                    # to benefit from parallelism. With too few rows (< n_jobs),
+                    # pandarallel can deadlock due to empty worker partitions.
+                    if HAS_PANDARALLEL and len(df_key1_sort) >= n_jobs:
                         stats_list = df_key1_sort.parallel_apply(calc_stats, axis=1)
                     else:
                         stats_list = df_key1_sort.apply(calc_stats, axis=1)
