@@ -3,3 +3,5 @@
 **/*.pyc
 **/*.log
 src/autosarm.egg-info/
+# Local-only Claude Code project guide (not tracked)
+CLAUDE.md
