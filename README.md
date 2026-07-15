@@ -6,7 +6,7 @@ A comprehensive toolkit for drug discovery research that enables automated SAR a
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
 [![RDKit](https://img.shields.io/badge/RDKit-Required-green.svg)](https://www.rdkit.org/)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
@@ -288,7 +288,7 @@ Contributions are welcome! Please:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License (declared in `pyproject.toml`). A standalone `LICENSE` file has not yet been added to the repo.
 
 ---
 
