@@ -5,6 +5,7 @@ FastAPI 应用工厂
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -41,9 +42,31 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing async task processor...")
     _async_processor = AsyncTaskProcessor()
 
-    # 启动数据库轮询
-    logger.info("Starting database polling for sarm_analysis tasks...")
-    await _async_processor.start_polling()
+    # —— 数据库轮询：默认关闭（ADR 0012 P2）——
+    #
+    # 集群里由 Argo Workflows 领活。**注意 autoSARM 的情况和另外三个 worker 不同**：它在集群里
+    # 从来就没有 Deployment、也没有镜像 —— 这个 worker **一次都没跑过**。所以这里没有"回滚"
+    # 一说，默认关闭是唯一正确的默认值。
+    #
+    # 🔴 为什么必须默认关掉：
+    # compute-foundry operator 的领活条件是 `status='pending' AND workflow_name IS NULL`。它提交
+    # Workflow 后先写 `workflow_name`，`status` 要等下一次 project() 才变成 `processing` ——
+    # 中间有个最长 10 秒的窗口，行仍然是 `pending`。任何人在本地把这个应用跑起来并把 DB 指向
+    # 生产库，就会在这个窗口里把任务领走 → **同一个任务跑两遍。**
+    #
+    # 讽刺的是，四个 worker 里 autoSARM 的领活是**唯一写对的**（真事务 + FOR UPDATE SKIP
+    # LOCKED）。但它照样要删 —— Argo 领活之后，已经没有东西需要加锁了。
+    if os.environ.get("LEGACY_POLLER", "0") == "1":
+        logger.warning(
+            "LEGACY_POLLER=1 —— 启动数据库轮询。这是 ADR 0012 之前的模式；"
+            "而 autoSARM 从未以这种模式在集群里跑过。除非你很清楚自己在做什么，否则不该看到这行。"
+        )
+        await _async_processor.start_polling()
+    else:
+        logger.info(
+            "数据库轮询已禁用（ADR 0012：调度由 Argo Workflows + compute-foundry operator 接管）。"
+            "本进程只提供 HTTP 接口；计算走 `python -m autosarm.steps run`。"
+        )
 
     logger.info("AutoSARM API startup complete")
 

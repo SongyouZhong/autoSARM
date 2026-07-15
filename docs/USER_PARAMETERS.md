@@ -142,7 +142,7 @@ VALUES (
 );
 ```
 
-任务创建后，空闲的 Worker 实例将自动轮询获取 `pending` 状态的任务并开始处理。
+任务创建后，`compute-foundry` operator 会把该 `pending` 行 reconcile 成一个 Argo Workflow（`sarm` 模板）并执行（2026-07-14 起，[ADR 0012](../../../docs/adr/0012-compute-scheduling-plane-argo.md)；旧的"空闲 Worker 轮询领取"模式已废弃）。⚠️ **注意：autoSARM 目前节点上无镜像、从未真正跑通**，提交后任务会在其 Argo step 处失败（`ErrImageNeverPull`），失败原因写入 `tasks.info`。
 
 ---
 
@@ -152,7 +152,7 @@ VALUES (
 
 | 状态 | 含义 |
 |------|------|
-| `pending` | 等待中，尚未被 Worker 领取 |
+| `pending` | 等待中，尚未被 `compute-foundry` operator 提交为 Workflow |
 | `processing` | 正在处理中 |
 | `finished` | 处理完成，结果已上传到 SeaweedFS |
 | `failed` | 处理失败（可查看 Worker 日志定位原因） |
